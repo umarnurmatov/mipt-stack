@@ -3,6 +3,8 @@
 #include <assert.h>
 #include <stdio.h>
 
+static size_t CAPACITY_EXPONENT = 2;
+
 #ifdef _DEBUG
 
 #define _STACK_DUMP(STK, ERR, MSG) \
@@ -14,6 +16,8 @@ static void _stack_dump(FILE* stream, stack_t* stk, stack_err_t err, const char*
 static stack_err_t _stack_validate(stack_t* stk);
 
 #endif // _DEBUG
+
+stack_err_t _stack_realloc(stack_t* stk, size_t capacity);
 
 stack_err_t stack_ctor(stack_t* stk, size_t capacity)
 {
@@ -59,15 +63,22 @@ stack_err_t stack_push(stack_t* stk, stack_data_t val)
     else if(err == STACK_ERR_SIZE_EXCEED_CAPACITY)
         _STACK_DUMP(stk, err, "");
 
-    if(stk->size == stk->capacity) {
-        err = STACK_ERR_OUT_OF_BOUND;
-        _STACK_DUMP(stk, err, "attempted to push to full stack");
-    }
-
     if(err != STACK_ERR_NONE)
         return err;
 
 #endif // _DEBUG
+    
+    if(stk->size == stk->capacity) {
+        err = _stack_realloc(stk, stk->capacity * CAPACITY_EXPONENT);
+        if(err != STACK_ERR_NONE) {
+
+#ifdef _DEBUG
+            _STACK_DUMP(stk, err, "");
+#endif // _DEBUG
+
+            return err;
+        }
+    }
 
     stk->buffer[stk->size++] = val;
     
@@ -142,6 +153,18 @@ void stack_dtor(stack_t* stk)
     stk->size     = 0;
 }
 
+
+stack_err_t _stack_realloc(stack_t* stk, size_t capacity)
+{
+    stack_data_t* buffer_tmp = (stack_data_t*)realloc(stk->buffer, capacity * sizeof(stk->buffer[0]));
+    if(buffer_tmp == NULL)
+        return STACK_ERR_ALLOC_FAIL;
+
+    stk->buffer = buffer_tmp;
+    stk->capacity = capacity;
+    return STACK_ERR_NONE;
+}
+
 #ifdef _DEBUG
 
 static stack_err_t _stack_validate(stack_t* stk)
@@ -172,7 +195,7 @@ static void _stack_dump(FILE* stream, stack_t* stk, stack_err_t err, const char*
     fprintf(stream, "  capacity: %lu\n", stk->capacity);
     fprintf(stream, "  size: %lu\n", stk->size);
 
-    fprintf(stream, "  buffer [%p]\n", stk);
+    fprintf(stream, "  buffer [%p]\n", stk->buffer);
     fputs("  {\n", stream);
 
     for(size_t i = 0; i < stk->capacity; ++i)

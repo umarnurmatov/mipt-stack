@@ -7,6 +7,7 @@ int main()
 
     stack_push(&stk, 1);
     stack_push(&stk, 1);
+    stack_push(&stk, 1);
 
     stack_dtor(&stk);
     return 0;
