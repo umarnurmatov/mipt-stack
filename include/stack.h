@@ -21,7 +21,7 @@
 #define STACK_MAKE(VARNAME) \
     stack_t VARNAME = {     \
         .buffer   = NULL,   \
-        .size     = 0       \
+        .size     = 0,      \
         .capacity = 0       \
     }
 #endif // _DEBUG

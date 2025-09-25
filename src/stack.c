@@ -7,6 +7,8 @@ static size_t CAPACITY_EXPONENT = 2;
 
 #ifdef _DEBUG
 
+#define IF_DEBUG(statement) statement
+
 #define _STACK_DUMP(STK, ERR, MSG) \
     _stack_dump(stderr, STK, ERR, MSG, __FILE__, __func__, __LINE__)
 
@@ -14,6 +16,10 @@ static void _stack_dump(FILE* stream, stack_t* stk, stack_err_t err, const char*
                         const char* filename, const char* funcname, int line);
 
 static stack_err_t _stack_validate(stack_t* stk);
+
+#else 
+
+#define IF_DEBUG(statement) 
 
 #endif // _DEBUG
 
@@ -23,24 +29,21 @@ stack_err_t stack_ctor(stack_t* stk, size_t capacity)
 {
     stack_err_t err = STACK_ERR_NONE;
 
-#ifdef _DEBUG
-    err = _stack_validate(stk);
-    if(err == STACK_ERR_NULL) {
-        _STACK_DUMP(stk, err, "passed null-pointer");
-        return err;
-    }
-#endif // _DEBUG
-   
+    IF_DEBUG(
+        err = _stack_validate(stk);
+        if(err == STACK_ERR_NULL) {
+            _STACK_DUMP(stk, err, "passed null-pointer");
+            return err;
+        }
+    )
+
     stk->buffer = 
         (stack_data_t*)calloc(capacity, sizeof(stk->buffer[0]));
     
-#ifdef _DEBUG    
-    err = _stack_validate(stk);
-    if(err == STACK_ERR_ALLOC_FAIL) {
-        _STACK_DUMP(stk, err, "failed to allocate buffer");
-        return err;
+    if(stk->buffer == NULL) {
+        IF_DEBUG(_STACK_DUMP(stk, err, "failed to allocate buffer"));
+        return STACK_ERR_ALLOC_FAIL;
     }
-#endif // _DEBUG
     
     stk->capacity = capacity;
     stk->size     = 0;
@@ -52,30 +55,24 @@ stack_err_t stack_push(stack_t* stk, stack_data_t val)
 {
     stack_err_t err = STACK_ERR_NONE;
 
-#ifdef _DEBUG
+    IF_DEBUG(
+        err = _stack_validate(stk);
 
-    err = _stack_validate(stk);
+        if     (err == STACK_ERR_NULL)
+            _STACK_DUMP(stk, err, "passed null-pointer");
+        else if(err == STACK_ERR_BUFFER_NULL)
+            _STACK_DUMP(stk, err, "");
+        else if(err == STACK_ERR_SIZE_EXCEED_CAPACITY)
+            _STACK_DUMP(stk, err, "");
 
-    if     (err == STACK_ERR_NULL)
-        _STACK_DUMP(stk, err, "passed null-pointer");
-    else if(err == STACK_ERR_BUFFER_NULL)
-        _STACK_DUMP(stk, err, "");
-    else if(err == STACK_ERR_SIZE_EXCEED_CAPACITY)
-        _STACK_DUMP(stk, err, "");
-
-    if(err != STACK_ERR_NONE)
-        return err;
-
-#endif // _DEBUG
+        if(err != STACK_ERR_NONE)
+            return err;
+    );
     
     if(stk->size == stk->capacity) {
         err = _stack_realloc(stk, stk->capacity * CAPACITY_EXPONENT);
         if(err != STACK_ERR_NONE) {
-
-#ifdef _DEBUG
-            _STACK_DUMP(stk, err, "");
-#endif // _DEBUG
-
+            IF_DEBUG(_STACK_DUMP(stk, err, ""));
             return err;
         }
     }
@@ -89,27 +86,25 @@ stack_err_t stack_pop(stack_t* stk, stack_data_t* val)
 {
     stack_err_t err = STACK_ERR_NONE;
 
-#ifdef _DEBUG
+    IF_DEBUG(
+        err = _stack_validate(stk);
 
-    err = _stack_validate(stk);
+        if     (err == STACK_ERR_NULL)
+            _STACK_DUMP(stk, err, "passed null-pointer");
+        else if(err == STACK_ERR_BUFFER_NULL)
+            _STACK_DUMP(stk, err, "");
+        else if(err == STACK_ERR_SIZE_EXCEED_CAPACITY)
+            _STACK_DUMP(stk, err, "");
 
-    if     (err == STACK_ERR_NULL)
-        _STACK_DUMP(stk, err, "passed null-pointer");
-    else if(err == STACK_ERR_BUFFER_NULL)
-        _STACK_DUMP(stk, err, "");
-    else if(err == STACK_ERR_SIZE_EXCEED_CAPACITY)
-        _STACK_DUMP(stk, err, "");
+        if(stk->size == 0) {
+            err = STACK_ERR_OUT_OF_BOUND;
+            _STACK_DUMP(stk, err, "attempted to pop from empty stack");
+        }
 
-    if(stk->size == 0) {
-        err = STACK_ERR_OUT_OF_BOUND;
-        _STACK_DUMP(stk, err, "attempted to pop from empty stack");
-    }
+        if(err != STACK_ERR_NONE)
+            return err;
+    );
 
-    if(err != STACK_ERR_NONE)
-        return err;
-
-#endif // _DEBUG
-    
     *val = stk->buffer[stk->size--];
 
     return err;
@@ -146,6 +141,14 @@ const char* stack_strerr(const stack_err_t err)
 
 void stack_dtor(stack_t* stk)
 {
+    IF_DEBUG(
+        stack_err_t err;
+        err = _stack_validate(stk);
+
+        if(err == STACK_ERR_BUFFER_NULL)
+            _STACK_DUMP(stk, err, "tried to dereference null pointer");
+    );
+
     free(stk->buffer);
 
     stk->buffer   = NULL;
@@ -156,7 +159,9 @@ void stack_dtor(stack_t* stk)
 
 stack_err_t _stack_realloc(stack_t* stk, size_t capacity)
 {
-    stack_data_t* buffer_tmp = (stack_data_t*)realloc(stk->buffer, capacity * sizeof(stk->buffer[0]));
+    stack_data_t* buffer_tmp = 
+        (stack_data_t*)realloc(stk->buffer, capacity * sizeof(stk->buffer[0]));
+
     if(buffer_tmp == NULL)
         return STACK_ERR_ALLOC_FAIL;
 
