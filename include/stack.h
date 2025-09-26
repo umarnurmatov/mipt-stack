@@ -5,6 +5,7 @@
 #include "varinfo.h"
 
 #ifdef _DEBUG
+// FIXME varname in the beginning
 #define STACK_MAKE(VARNAME)           \
     stack_t VARNAME = {               \
         .buffer   = NULL,             \

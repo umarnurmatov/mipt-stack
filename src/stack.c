@@ -3,7 +3,7 @@
 #include <assert.h>
 #include <stdio.h>
 
-static size_t CAPACITY_EXPONENT = 2;
+static size_t CAPACITY_EXP = 2;
 
 #ifdef _DEBUG
 
@@ -16,6 +16,8 @@ static void _stack_dump(FILE* stream, stack_t* stk, stack_err_t err, const char*
                         const char* filename, const char* funcname, int line);
 
 static stack_err_t _stack_validate(stack_t* stk);
+
+const stack_data_t POISON = (stack_data_t)0xCAFEBABE;
 
 #else 
 
@@ -37,16 +39,16 @@ stack_err_t stack_ctor(stack_t* stk, size_t capacity)
         }
     )
 
-    stk->buffer = 
-        (stack_data_t*)calloc(capacity, sizeof(stk->buffer[0]));
-    
-    if(stk->buffer == NULL) {
+    stk->buffer = NULL;
+    stk->size   = 0;
+
+    err = _stack_realloc(stk, capacity);
+    if(err == STACK_ERR_ALLOC_FAIL) {
         IF_DEBUG(_STACK_DUMP(stk, err, "failed to allocate buffer"));
-        return STACK_ERR_ALLOC_FAIL;
+        return err;
     }
     
     stk->capacity = capacity;
-    stk->size     = 0;
 
     return err;
 }
@@ -70,7 +72,7 @@ stack_err_t stack_push(stack_t* stk, stack_data_t val)
     );
     
     if(stk->size == stk->capacity) {
-        err = _stack_realloc(stk, stk->capacity * CAPACITY_EXPONENT);
+        err = _stack_realloc(stk, stk->capacity * CAPACITY_EXP);
         if(err != STACK_ERR_NONE) {
             IF_DEBUG(_STACK_DUMP(stk, err, ""));
             return err;
@@ -165,6 +167,11 @@ stack_err_t _stack_realloc(stack_t* stk, size_t capacity)
     if(buffer_tmp == NULL)
         return STACK_ERR_ALLOC_FAIL;
 
+    IF_DEBUG(
+        for(size_t i = stk->size; i < capacity; ++i)
+            buffer_tmp[i] = POISON;
+    );
+
     stk->buffer = buffer_tmp;
     stk->capacity = capacity;
     return STACK_ERR_NONE;
@@ -198,16 +205,16 @@ static void _stack_dump(FILE* stream, stack_t* stk, stack_err_t err, const char*
     fprintf(stream, "  init: %s:%d %s(): %s\n", varinfo->filename, varinfo->line, varinfo->funcname, varinfo->varname);
 
     fprintf(stream, "  capacity: %lu\n", stk->capacity);
-    fprintf(stream, "  size: %lu\n", stk->size);
+    fprintf(stream, "  size: %lu %s\n", stk->size, err == STACK_ERR_SIZE_EXCEED_CAPACITY ? "BAD" : "");
 
     fprintf(stream, "  buffer [%p]\n", stk->buffer);
     fputs("  {\n", stream);
 
     for(size_t i = 0; i < stk->capacity; ++i)
-        if(i < stk->size)
-            fprintf(stream, "   *[%lu] = %d\n", i, stk->buffer[i]);
+        if(stk->buffer[i] == POISON)
+            fprintf(stream, "    [%lu] = %d [POISON]\n", i, stk->buffer[i]);
         else
-            fprintf(stream, "    [%lu] = %d\n", i, stk->buffer[i]);
+            fprintf(stream, "   *[%lu] = %d\n", i, stk->buffer[i]);
 
     fputs("  }\n", stream);
     fputs("}\n", stream);
