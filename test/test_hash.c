@@ -7,10 +7,10 @@ int main()
 
     stack_push(&stk, 1);
 
-    stk.buffer[1] = 1234;
+    stk.buffer[1] = 1234987;
 
     int a = 0;
-    stack_pop(&stk, &a);
+    stack_push(&stk, 1);
 
     stack_dtor(&stk);
     return 0;

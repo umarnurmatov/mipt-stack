@@ -34,7 +34,6 @@ static size_t CAPACITY_EXP = 2;
 
 stack_err_t _stack_realloc(stack_t* stk, size_t capacity);
 
-// FIXME make hash
 // FIXME make shrink
 stack_err_t stack_ctor(stack_t* stk, size_t capacity)
 {
@@ -42,6 +41,7 @@ stack_err_t stack_ctor(stack_t* stk, size_t capacity)
 
     IF_DEBUG(
         err = _stack_validate(stk);
+
         if(err == STACK_ERR_NULL) {
             STACK_DUMP(stk, err, "passed null-pointer");
             return err;
@@ -78,25 +78,12 @@ stack_err_t stack_push(stack_t* stk, stack_data_t val)
     IF_DEBUG(
         err = _stack_validate(stk);
 
-        if     (err == STACK_ERR_NULL)
-            STACK_DUMP(stk, err, "passed null-pointer");
-
-        else if(err == STACK_ERR_CANARY_ESCAPED)
+        if(err != STACK_ERR_NONE) {
             STACK_DUMP(stk, err, "");
-
-        else if(err == STACK_ERR_BUFFER_NULL)
-            STACK_DUMP(stk, err, "");
-
-        else if(err == STACK_ERR_SIZE_EXCEED_CAPACITY)
-            STACK_DUMP(stk, err, "");
-
-        else if(err == STACK_ERR_HASH_UNMATCH)
-            STACK_DUMP(stk, err, "");
-
-        if(err != STACK_ERR_NONE)
             return err;
+        }
     );
-    
+
     if(stk->size == stk->capacity) {
         err = _stack_realloc(stk, stk->capacity * CAPACITY_EXP);
         if(err != STACK_ERR_NONE) {
@@ -117,32 +104,21 @@ stack_err_t stack_pop(stack_t* stk, stack_data_t* val)
     IF_DEBUG(
         err = _stack_validate(stk);
 
-        if     (err == STACK_ERR_NULL)
-            STACK_DUMP(stk, err, "passed null-pointer");
-
-        else if(err == STACK_ERR_CANARY_ESCAPED)
+        if(err != STACK_ERR_NONE) {
             STACK_DUMP(stk, err, "");
+            return err;
+        }
 
-        else if(err == STACK_ERR_BUFFER_NULL)
-            STACK_DUMP(stk, err, "");
-
-        else if(err == STACK_ERR_SIZE_EXCEED_CAPACITY)
-            STACK_DUMP(stk, err, "");
-
-        else if(err == STACK_ERR_HASH_UNMATCH)
-            STACK_DUMP(stk, err, "");
-
-        else if(stk->size == 0) {
+        if(stk->size == 0) {
             err = STACK_ERR_OUT_OF_BOUND;
             STACK_DUMP(stk, err, "attempted to pop from empty stack");
+            return err;
         }
         else if(val == NULL) {
             err = STACK_ERR_NULL;
             STACK_DUMP(stk, err, "passed null-pointer for return value");
-        }
-
-        if(err != STACK_ERR_NONE)
             return err;
+        }
     );
 
     *val = stk->buffer[CANARY_INDEX(stk->size--)];
@@ -217,12 +193,16 @@ stack_err_t _stack_realloc(stack_t* stk, size_t capacity)
         for(size_t i = CANARY_INDEX(stk->size); i < CANARY_SIZE(capacity); ++i)
             buffer_tmp[i] = POISON;
 
-#ifdef HASH_ENABLED
-        stk->buffer_hash = utils_djb2_hash(buffer_tmp, CANARY_SIZE(capacity));
-#endif // HASH_ENABLED
-
         buffer_tmp[0                        ] = CANARY_BEGIN;
         buffer_tmp[CANARY_SIZE(capacity) - 1] = CANARY_END;
+
+#ifdef HASH_ENABLED
+        stk->buffer_hash = 
+            utils_djb2_hash(
+                buffer_tmp, 
+                CANARY_SIZE(capacity) * sizeof(buffer_tmp[0])
+            );
+#endif // HASH_ENABLED
     );
 
     stk->buffer   = buffer_tmp;
@@ -253,12 +233,16 @@ static stack_err_t _stack_validate(stack_t* stk)
     else if(stk->buffer[CANARY_SIZE(stk->capacity) - 1] != CANARY_END)
         return STACK_ERR_CANARY_ESCAPED;
 
+#ifdef HASH_ENABLED
     else if(
         stk->buffer_hash != 
-            utils_djb2_hash(stk->buffer, CANARY_SIZE(stk->capacity))
+            utils_djb2_hash(
+                stk->buffer, 
+                CANARY_SIZE(stk->capacity) * sizeof(stk->buffer[0])
+            )
     )
-
         return STACK_ERR_HASH_UNMATCH;
+#endif // HASH_ENABLED
 
     else if(stk->size > stk->capacity)
         return STACK_ERR_SIZE_EXCEED_CAPACITY;
@@ -313,6 +297,14 @@ static void _stack_dump(FILE* stream, stack_t* stk, stack_err_t err, const char*
             err == STACK_ERR_SIZE_EXCEED_CAPACITY ? "(BAD)" : ""
         );
 
+#ifdef HASH_ENABLED
+        fprintf(
+            stream, 
+            "  buffer hash: %.16lx\n", 
+            stk->buffer_hash
+        );
+#endif // HASH_ENABLED
+
         if(err == STACK_ERR_BUFFER_NULL) {
             fputs("  buffer [NULL]\n", stream);
             GOTO_END;
@@ -330,14 +322,25 @@ static void _stack_dump(FILE* stream, stack_t* stk, stack_err_t err, const char*
 
         for(size_t i = CANARY_INDEX(0); i < CANARY_INDEX(stk->capacity); ++i)
             if(stk->buffer[i] == POISON)
-                fprintf(stream, "    [%lu] = %d \t [POISON]\n", i, stk->buffer[i]);
+                fprintf(
+                    stream, 
+                    "    [%lu] = %d \t [POISON]\n", 
+                    i, 
+                    stk->buffer[i]
+                );
             else
-                fprintf(stream, "   *[%lu] = %d\n", i, stk->buffer[i]);
+                fprintf(
+                    stream, 
+                    "   *[%lu] = %d %s\n", 
+                    i, 
+                    stk->buffer[i],
+                    err == STACK_ERR_HASH_UNMATCH ? "\t (BAD)" : ""
+                );
 
         fprintf(
             stream, 
             "    [#] = %x \t [CANARY] %s\n", 
-            (unsigned)stk->buffer[0],
+            (unsigned)stk->buffer[CANARY_SIZE(stk->capacity) - 1],
             err == STACK_ERR_CANARY_ESCAPED ? "(BAD)" : ""
         );
 
