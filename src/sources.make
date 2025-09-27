@@ -1,1 +1,1 @@
-SOURCES := main.c stack.c
+SOURCES := stack.c hashutils.c

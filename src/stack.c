@@ -34,6 +34,8 @@ static size_t CAPACITY_EXP = 2;
 
 stack_err_t _stack_realloc(stack_t* stk, size_t capacity);
 
+// FIXME make hash
+// FIXME make shrink
 stack_err_t stack_ctor(stack_t* stk, size_t capacity)
 {
     stack_err_t err = STACK_ERR_NONE;
@@ -42,6 +44,12 @@ stack_err_t stack_ctor(stack_t* stk, size_t capacity)
         err = _stack_validate(stk);
         if(err == STACK_ERR_NULL) {
             STACK_DUMP(stk, err, "passed null-pointer");
+            return err;
+        }
+
+        else if(capacity == 0) {
+            err = STACK_ERR_NULL;
+            STACK_DUMP(stk, err, "invalid capacity");
             return err;
         }
     )
@@ -82,6 +90,9 @@ stack_err_t stack_push(stack_t* stk, stack_data_t val)
         else if(err == STACK_ERR_SIZE_EXCEED_CAPACITY)
             STACK_DUMP(stk, err, "");
 
+        else if(err == STACK_ERR_HASH_UNMATCH)
+            STACK_DUMP(stk, err, "");
+
         if(err != STACK_ERR_NONE)
             return err;
     );
@@ -118,9 +129,16 @@ stack_err_t stack_pop(stack_t* stk, stack_data_t* val)
         else if(err == STACK_ERR_SIZE_EXCEED_CAPACITY)
             STACK_DUMP(stk, err, "");
 
+        else if(err == STACK_ERR_HASH_UNMATCH)
+            STACK_DUMP(stk, err, "");
+
         else if(stk->size == 0) {
             err = STACK_ERR_OUT_OF_BOUND;
             STACK_DUMP(stk, err, "attempted to pop from empty stack");
+        }
+        else if(val == NULL) {
+            err = STACK_ERR_NULL;
+            STACK_DUMP(stk, err, "passed null-pointer for return value");
         }
 
         if(err != STACK_ERR_NONE)
@@ -157,6 +175,9 @@ const char* stack_strerr(const stack_err_t err)
         case STACK_ERR_CANARY_ESCAPED:
             return "canary value changed";
             break;
+        case STACK_ERR_HASH_UNMATCH:
+            return "buffer hashsum unmatched";
+            break;
         default:
             return "unknown";
             break;
@@ -169,8 +190,8 @@ void stack_dtor(stack_t* stk)
         stack_err_t err;
         err = _stack_validate(stk);
 
-        if(err == STACK_ERR_BUFFER_NULL)
-            STACK_DUMP(stk, err, "tried to dereference null pointer");
+        if(err == STACK_ERR_NULL)
+            STACK_DUMP(stk, err, "tried to deinit uninitialized stack");
     );
 
     free(stk->buffer);
@@ -195,6 +216,10 @@ stack_err_t _stack_realloc(stack_t* stk, size_t capacity)
     IF_DEBUG(
         for(size_t i = CANARY_INDEX(stk->size); i < CANARY_SIZE(capacity); ++i)
             buffer_tmp[i] = POISON;
+
+#ifdef HASH_ENABLED
+        stk->buffer_hash = utils_djb2_hash(buffer_tmp, CANARY_SIZE(capacity));
+#endif // HASH_ENABLED
 
         buffer_tmp[0                        ] = CANARY_BEGIN;
         buffer_tmp[CANARY_SIZE(capacity) - 1] = CANARY_END;
@@ -228,6 +253,13 @@ static stack_err_t _stack_validate(stack_t* stk)
     else if(stk->buffer[CANARY_SIZE(stk->capacity) - 1] != CANARY_END)
         return STACK_ERR_CANARY_ESCAPED;
 
+    else if(
+        stk->buffer_hash != 
+            utils_djb2_hash(stk->buffer, CANARY_SIZE(stk->capacity))
+    )
+
+        return STACK_ERR_HASH_UNMATCH;
+
     else if(stk->size > stk->capacity)
         return STACK_ERR_SIZE_EXCEED_CAPACITY;
 
@@ -237,8 +269,6 @@ static stack_err_t _stack_validate(stack_t* stk)
 static void _stack_dump(FILE* stream, stack_t* stk, stack_err_t err, const char* msg, 
                         const char* filename, const char* funcname, int line)
 {
-    const varinfo_t* varinfo = &stk->varinfo;
-    
     fputs("================================\n", stream);
     fprintf(stream, "what: %s\n", msg);
 
@@ -260,6 +290,7 @@ static void _stack_dump(FILE* stream, stack_t* stk, stack_err_t err, const char*
 
         fputs("{\n", stream);
 
+        const varinfo_t* varinfo = &stk->varinfo;
         fprintf(
             stream, 
             "  init: %s:%d %s(): %s\n", 
@@ -292,20 +323,20 @@ static void _stack_dump(FILE* stream, stack_t* stk, stack_err_t err, const char*
 
         fprintf(
             stream, 
-            "    [#] = %x [CANARY] %s\n", 
+            "    [#] = %x \t [CANARY] %s\n", 
             (unsigned)stk->buffer[0],
             err == STACK_ERR_CANARY_ESCAPED ? "(BAD)" : ""
         );
 
         for(size_t i = CANARY_INDEX(0); i < CANARY_INDEX(stk->capacity); ++i)
             if(stk->buffer[i] == POISON)
-                fprintf(stream, "    [%lu] = %d [POISON]\n", i, stk->buffer[i]);
+                fprintf(stream, "    [%lu] = %d \t [POISON]\n", i, stk->buffer[i]);
             else
                 fprintf(stream, "   *[%lu] = %d\n", i, stk->buffer[i]);
 
         fprintf(
             stream, 
-            "    [#] = %x [CANARY] %s\n", 
+            "    [#] = %x \t [CANARY] %s\n", 
             (unsigned)stk->buffer[0],
             err == STACK_ERR_CANARY_ESCAPED ? "(BAD)" : ""
         );

@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "varinfo.h"
+#include "hashutils.h"
 
 #ifdef _DEBUG
 // FIXME varname in the beginning
@@ -44,7 +45,8 @@ typedef enum stack_err_t
     STACK_ERR_SIZE_EXCEED_CAPACITY,
     STACK_ERR_ALLOC_FAIL,
     STACK_ERR_OUT_OF_BOUND,
-    STACK_ERR_CANARY_ESCAPED
+    STACK_ERR_CANARY_ESCAPED,
+    STACK_ERR_HASH_UNMATCH
 } stack_err_t;
 
 typedef struct stack_t
@@ -55,9 +57,15 @@ typedef struct stack_t
     size_t size;
     size_t capacity;
 
-    IF_DEBUG(const varinfo_t varinfo);
+    IF_DEBUG(
+        const varinfo_t varinfo;
 
-    IF_DEBUG(stack_data_t canary_end);
+#ifdef HASH_ENABLED
+        utils_hash_t buffer_hash;
+#endif // HASH_ENABLED
+
+        stack_data_t canary_end;
+    );
 } stack_t;
 
 stack_err_t stack_ctor(stack_t* stk, size_t capacity);
