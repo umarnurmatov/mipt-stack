@@ -19,6 +19,8 @@ static void _stack_dump(FILE* stream, stack_t* stk, stack_err_t err, const char*
 
 static stack_err_t _stack_validate(stack_t* stk);
 
+static utils_hash_t _stack_recalc_hashsum(stack_t* stk);
+
 const stack_data_t POISON       = (stack_data_t)0xCAFEBABE;
 const stack_data_t CANARY_BEGIN = (stack_data_t)0x8BADF00D;
 const stack_data_t CANARY_END   = (stack_data_t)0xDEADC0DE;
@@ -30,7 +32,8 @@ const stack_data_t CANARY_END   = (stack_data_t)0xDEADC0DE;
 
 #endif // _DEBUG
 
-static size_t CAPACITY_EXP = 2;
+static const size_t CAPACITY_EXP             = 2;
+static const double CAPACITY_SHRINK_FRACTION = 0.3f;
 
 stack_err_t _stack_realloc(stack_t* stk, size_t capacity);
 
@@ -66,6 +69,8 @@ stack_err_t stack_ctor(stack_t* stk, size_t capacity)
     IF_DEBUG(
         stk->canary_begin = CANARY_BEGIN;
         stk->canary_end   = CANARY_END;
+
+        _stack_recalc_hashsum(stk);
     )
 
     return err;
@@ -93,6 +98,10 @@ stack_err_t stack_push(stack_t* stk, stack_data_t val)
     }
 
     stk->buffer[CANARY_INDEX(stk->size++)] = val;
+
+    IF_DEBUG(
+        _stack_recalc_hashsum(stk);
+    );
     
     return err;
 }
@@ -122,6 +131,18 @@ stack_err_t stack_pop(stack_t* stk, stack_data_t* val)
     );
 
     *val = stk->buffer[CANARY_INDEX(stk->size--)];
+
+    if((double)stk->size / (double)stk->capacity <= CAPACITY_SHRINK_FRACTION) {
+        err = _stack_realloc(stk, stk->capacity / CAPACITY_EXP);
+        if(err != STACK_ERR_NONE) {
+            IF_DEBUG(STACK_DUMP(stk, err, ""));
+            return err;
+        }
+    }
+
+    IF_DEBUG(
+        _stack_recalc_hashsum(stk);
+    );
 
     return err;
 }
@@ -195,14 +216,6 @@ stack_err_t _stack_realloc(stack_t* stk, size_t capacity)
 
         buffer_tmp[0                        ] = CANARY_BEGIN;
         buffer_tmp[CANARY_SIZE(capacity) - 1] = CANARY_END;
-
-#ifdef HASH_ENABLED
-        stk->buffer_hash = 
-            utils_djb2_hash(
-                buffer_tmp, 
-                CANARY_SIZE(capacity) * sizeof(buffer_tmp[0])
-            );
-#endif // HASH_ENABLED
     );
 
     stk->buffer   = buffer_tmp;
@@ -348,6 +361,21 @@ static void _stack_dump(FILE* stream, stack_t* stk, stack_err_t err, const char*
     } END;
 
     fputs("================================\n\n", stream);
+}
+
+static utils_hash_t _stack_recalc_hashsum(stack_t* stk)
+{
+
+#ifdef HASH_ENABLED
+    utils_hash_t hash = utils_djb2_hash(
+        stk->buffer, 
+        CANARY_SIZE(stk->capacity) * sizeof(stk->buffer[0])
+    );
+    stk->buffer_hash = hash;
+    return hash;
+#endif // HASH_ENABLED
+
+    return 0;
 }
 
 #endif // _DEBUG
