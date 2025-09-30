@@ -138,11 +138,11 @@ stack_err_t stack_pop(stack_t* stk, stack_data_t* val)
             IF_DEBUG(STACK_DUMP(stk, err, ""));
             return err;
         }
-    }
 
-    IF_DEBUG(
-        _stack_recalc_hashsum(stk);
-    );
+        IF_DEBUG(
+            _stack_recalc_hashsum(stk);
+        );
+    }
 
     return err;
 }
@@ -333,20 +333,20 @@ static void _stack_dump(FILE* stream, stack_t* stk, stack_err_t err, const char*
             err == STACK_ERR_CANARY_ESCAPED ? "(BAD)" : ""
         );
 
-        for(size_t i = CANARY_INDEX(0); i < CANARY_INDEX(stk->capacity); ++i)
+        for(size_t i = 0; i < stk->capacity; ++i)
             if(stk->buffer[i] == POISON)
                 fprintf(
                     stream, 
                     "    [%lu] = %d \t [POISON]\n", 
                     i, 
-                    stk->buffer[i]
+                    stk->buffer[CANARY_INDEX(i)]
                 );
             else
                 fprintf(
                     stream, 
                     "   *[%lu] = %d %s\n", 
                     i, 
-                    stk->buffer[i],
+                    stk->buffer[CANARY_INDEX(i)],
                     err == STACK_ERR_HASH_UNMATCH ? "\t (BAD)" : ""
                 );
 
@@ -373,9 +373,10 @@ static utils_hash_t _stack_recalc_hashsum(stack_t* stk)
     );
     stk->buffer_hash = hash;
     return hash;
+#else
+    return 0;
 #endif // HASH_ENABLED
 
-    return 0;
 }
 
 #endif // _DEBUG
