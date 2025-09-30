@@ -11,8 +11,18 @@
 
 #define STACK_DUMP(STK, ERR, MSG) \
     _stack_dump(stderr, STK, ERR, MSG, __FILE__, __func__, __LINE__)
+
+#ifdef CANARY_ENABLED
+
 #define CANARY_SIZE(size) (size + 2)
 #define CANARY_INDEX(index) (index + 1)
+
+#else
+
+#define CANARY_SIZE(size) size
+#define CANARY_INDEX(index) index
+
+#endif // CANARY_ENABLED
 
 static void _stack_dump(FILE* stream, stack_t* stk, stack_err_t err, const char* msg, 
                         const char* filename, const char* funcname, int line);
@@ -22,8 +32,13 @@ static stack_err_t _stack_validate(stack_t* stk);
 static utils_hash_t _stack_recalc_hashsum(stack_t* stk);
 
 const stack_data_t POISON       = (stack_data_t)0xCAFEBABE;
+
+#ifdef CANARY_ENABLED
+
 const stack_data_t CANARY_BEGIN = (stack_data_t)0x8BADF00D;
 const stack_data_t CANARY_END   = (stack_data_t)0xDEADC0DE;
+
+#endif // CANARY_ENABLED
 
 #else
 

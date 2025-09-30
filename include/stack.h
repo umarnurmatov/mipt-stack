@@ -51,7 +51,11 @@ typedef enum stack_err_t
 
 typedef struct stack_t
 {
-    IF_DEBUG(stack_data_t canary_begin);
+    IF_DEBUG(
+#ifdef CANARY_ENABLED
+        stack_data_t canary_begin
+#endif // CANARY_ENABLED
+    );
 
     stack_data_t* buffer;
     size_t size;
@@ -64,7 +68,9 @@ typedef struct stack_t
         utils_hash_t buffer_hash;
 #endif // HASH_ENABLED
 
+#ifdef CANARY_ENABLED
         stack_data_t canary_end;
+#endif // CANARY_ENABLED
     );
 } stack_t;
 
